@@ -1,0 +1,47 @@
+{
+ "home": {
+  "title": "DearYou - Site para Namorada e Namorado | Presente de Amor Criativo",
+  "description": "Crie um site de amor personalizado para sua namorada ou namorado: contador de tempo juntos, fotos, música e mensagem. Preview grátis, a partir de R$ 19,90.",
+  "bodyClass": "playfair_display_e63399fd-module__QZypQW__variable inter_6eb1298b-module__Ox-vVW__variable font-sans antialiased"
+ },
+ "amizade": {
+  "title": "Página de Amizade Personalizada — Presente para Melhor Amigo(a) | DearYou | DearYou",
+  "description": "Crie uma página de amizade personalizada para surpreender seu melhor amigo(a). Presente criativo com contador de tempo de amizade, fotos e música especial. Pronto em 5 minutos!",
+  "bodyClass": "playfair_display_e63399fd-module__QZypQW__variable inter_6eb1298b-module__Ox-vVW__variable font-sans antialiased"
+ },
+ "pai": {
+  "title": "Página para o Dia dos Pais — Presente Personalizado para Pai | DearYou | DearYou",
+  "description": "Crie uma página personalizada para surpreender seu pai. Presente criativo de Dia dos Pais com contador de tempo, fotos e música especial. Pronto em 5 minutos!",
+  "bodyClass": "playfair_display_e63399fd-module__QZypQW__variable inter_6eb1298b-module__Ox-vVW__variable font-sans antialiased"
+ },
+ "precos": {
+  "title": "Preços - DearYou | Página de amor a partir de R$ 19,90 | DearYou",
+  "description": "Quanto custa criar uma página de amor no DearYou? Plano 1 Dia por R$ 19,90 ou Plano Eterno por R$ 34,90. Pagamento único via PIX ou cartão em até 12x. Preview gratuito.",
+  "bodyClass": "playfair_display_e63399fd-module__QZypQW__variable inter_6eb1298b-module__Ox-vVW__variable font-sans antialiased"
+ },
+ "termos": {
+  "title": "Termos de Uso - DearYou | DearYou",
+  "description": "Termos de Uso da plataforma DearYou. Regras de uso, política de reembolso e direitos do usuário.",
+  "bodyClass": "playfair_display_e63399fd-module__QZypQW__variable inter_6eb1298b-module__Ox-vVW__variable font-sans antialiased"
+ },
+ "privacidade": {
+  "title": "Política de Privacidade - DearYou | DearYou",
+  "description": "Política de Privacidade da plataforma DearYou. Saiba como coletamos, usamos e protegemos seus dados pessoais conforme a LGPD.",
+  "bodyClass": "playfair_display_e63399fd-module__QZypQW__variable inter_6eb1298b-module__Ox-vVW__variable font-sans antialiased"
+ },
+ "exemplo": {
+  "title": "Exemplo de Site de Amor | Veja Como Fica | DearYou | DearYou",
+  "description": "Veja um exemplo real de página de amor criada no DearYou. Contador de tempo juntos, fotos do casal, música especial e mensagem personalizada. Crie a sua em 5 minutos!",
+  "bodyClass": "playfair_display_e63399fd-module__QZypQW__variable inter_6eb1298b-module__Ox-vVW__variable font-sans antialiased"
+ },
+ "exemplo-amizade": {
+  "title": "Exemplo de Página de Amizade | Veja Como Fica | DearYou | DearYou",
+  "description": "Veja um exemplo real de página de amizade criada no DearYou. Contador de tempo de amizade, fotos, música especial e mensagem personalizada. Crie a sua em 5 minutos!",
+  "bodyClass": "playfair_display_e63399fd-module__QZypQW__variable inter_6eb1298b-module__Ox-vVW__variable font-sans antialiased"
+ },
+ "exemplo-pai": {
+  "title": "Exemplo de Página para o Dia dos Pais | Veja Como Fica | DearYou | DearYou",
+  "description": "Veja um exemplo real de página para pai criada no DearYou. Contador de tempo, fotos, música especial e mensagem personalizada. Crie a sua em 5 minutos!",
+  "bodyClass": "playfair_display_e63399fd-module__QZypQW__variable inter_6eb1298b-module__Ox-vVW__variable font-sans antialiased"
+ }
+}

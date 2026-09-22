@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DearYou
 
-## Getting Started
+Construtor de páginas de presente com Next.js 16, React 19, Prisma 6 e PostgreSQL (Neon). Fotos persistem no Vercel Blob; o disco das funções não é usado em produção.
 
-First, run the development server:
+## Vercel
+
+O conteúdo desta pasta fica na raiz do repositório `kaduGplay/DearYou`. Importe o repositório com framework Next.js, Root Directory vazio e Node.js 22. O `vercel.json` define a região São Paulo e o comando `npm run vercel-build`: aplica as migrations versionadas e compila o site. O `postinstall` gera o Prisma Client automaticamente.
+
+Recursos de produção: projeto `dearyou`, banco Neon `dearyou-db` e Blob público `dearyou-photos`. A integração injeta as credenciais no ambiente Production. A branch `main` está vinculada ao projeto. Previews precisam de banco, Blob e variáveis próprios; as credenciais de produção não são compartilhadas automaticamente com previews.
+
+| Variável | Finalidade |
+|---|---|
+| `DATABASE_URL` | Conexão PostgreSQL com pool, fornecida pelo Neon. |
+| `DATABASE_URL_UNPOOLED` | Conexão direta para migrations, fornecida pelo Neon. |
+| `BLOB_READ_WRITE_TOKEN` | Token do armazenamento de fotos, fornecido pela integração Blob. |
+| `SESSION_SECRET` | Segredo aleatório de 32+ caracteres para sessões e recuperação de senha. |
+| `APP_URL` | URL pública HTTPS do site, usada nos links de recuperação e callbacks do pagamento. Atualize ao adicionar domínio próprio. |
+| `PAYMENT_PROVIDER` | `voidpay` em produção; o pagamento simulado é bloqueado em produção. |
+| `VOIDPAY_PUBLIC_KEY`, `VOIDPAY_SECRET_KEY` | Credenciais do pagamento PIX. |
+| `VOIDPAY_BASE_URL` | URL do gateway VoidPay. |
+| `VOIDPAY_DEFAULT_DOCUMENT` | CPF usado pela integração existente para gerar cobranças. |
+| `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` | Busca de músicas. |
+| `RESEND_API_KEY`, `EMAIL_FROM` | Envio de e-mails; o remetente deve pertencer a domínio verificado no Resend. |
+
+Sem Resend, o site continua funcionando, mas a recuperação de senha retorna indisponibilidade e os avisos de visita não são enviados. Tokens de recuperação não são registrados em logs de produção. O pagamento precisa ser validado com uma transação real para confirmar o ciclo completo.
+
+O webhook VoidPay é `POST /api/webhooks/voidpay`. Configure `APP_URL` para o endereço público correto e permita acesso público a esse endpoint na proteção de produção da Vercel.
+
+## Desenvolvimento
+
+Use um banco PostgreSQL separado. O antigo SQLite não é mais utilizado; seu arquivo local não é enviado ao GitHub.
 
 ```bash
+cp .env.example .env
+# Preencha as variáveis, sobretudo as duas URLs PostgreSQL e SESSION_SECRET.
+npm ci
+npm run db:migrate
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Sem token Blob, o desenvolvimento salva fotos em `uploads/` localmente. Em produção o token é obrigatório. Fotos têm limite de 4 MB por arquivo e são enviadas individualmente para respeitar o limite de requisição das funções da Vercel. As imagens no Blob são públicas mediante URL; não use para documentos privados.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run lint
+npm run typecheck
+npm run build
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+As tentativas de login, cadastro, recuperação, busca e mensagens usam contadores atômicos no PostgreSQL compartilhados entre instâncias. Migrations são aplicadas com `prisma migrate deploy`, sem `db push` nem reset de dados em produção. Alterações destrutivas futuras exigem revisão e backup.
 
-## Learn More
+## Rotas
 
-To learn more about Next.js, take a look at the following resources:
+`/` → `/criar` → `/dashboard/pricing` → `/checkout/[id]` → `/dashboard/success` → `/[slug]`.
+Também: `/amizade`, `/pai`, `/exemplo*`, `/precos`, `/termos`, `/privacidade`, `/auth/login`, `/auth/forgot-password`, `/dashboard`, `/editor/[id]`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Nunca adicione `.env`, tokens, banco local ou fotos de usuários ao Git. O `.env.example` contém somente modelos sem credenciais.

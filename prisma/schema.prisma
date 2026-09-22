@@ -1,0 +1,116 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  phone        String?
+  document     String?
+  passwordHash String
+  createdAt    DateTime @default(now())
+  pages        Page[]
+  orders       Order[]
+}
+
+model Page {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  slug        String   @unique
+  kind        String   @default("amor") // amor | amizade | pai
+  style       String   @default("classica") // classica | carta | interativa | quiz
+  quizPrize   String   @default("")
+  quizNeeded  Int      @default(1)
+  title       String   @default("")
+  recipient   String   @default("")
+  startDate   DateTime
+  message     String   @default("")
+  theme       String   @default("rose")
+  musicUrl    String   @default("")
+  plan        String? // dia | eterno
+  status      String   @default("draft") // draft | published | expired
+  publishedAt DateTime?
+  expiresAt   DateTime?
+  editableUntil DateTime?
+  views       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  photos      Photo[]
+  timeline    TimelineEvent[]
+  guestbook   GuestbookEntry[]
+  quiz        QuizQuestion[]
+  orders      Order[]
+}
+
+model QuizQuestion {
+  id      String @id @default(cuid())
+  pageId  String
+  page    Page   @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  order   Int    @default(0)
+  text    String
+  correct String
+  wrong   String // 3 respostas erradas separadas por \n
+}
+
+model Photo {
+  id      String @id @default(cuid())
+  pageId  String
+  page    Page   @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  file    String
+  caption String @default("")
+  order   Int    @default(0)
+}
+
+model TimelineEvent {
+  id     String   @id @default(cuid())
+  pageId String
+  page   Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  date   DateTime
+  title  String
+  text   String   @default("")
+  photo  String?
+}
+
+model GuestbookEntry {
+  id        String   @id @default(cuid())
+  pageId    String
+  page      Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  author    String
+  message   String
+  createdAt DateTime @default(now())
+}
+
+model Order {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pageId      String
+  page        Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  plan        String
+  amountCents Int
+  method      String   @default("pix") // pix | card
+  status      String   @default("pending") // pending | paid | failed
+  provider    String   @default("mock")
+  providerRef String?
+  pixCode     String?
+  pixQr       String?
+  webhookToken String?
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+  paidAt      DateTime?
+}
+
+model RateLimit {
+  key String @id
+  count Int
+  expiresAt DateTime
+  @@index([expiresAt])
+}
