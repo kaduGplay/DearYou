@@ -1,4 +1,5 @@
 "use client";
+import { trackMeta } from "@/lib/meta-pixel";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -19,6 +20,7 @@ export default function AuthForm() {
     const res = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { setError(data.error ?? "Algo deu errado"); setBusy(false); return; }
+    trackMeta("Login", {}, undefined, true);
     router.push(next.startsWith("/") ? next : "/dashboard");
     router.refresh();
   }

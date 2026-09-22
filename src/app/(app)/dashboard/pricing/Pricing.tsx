@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Heart from "@/components/Heart";
 import { PLANS, STYLES, brl, type PlanId, type StyleId } from "@/lib/plans";
+import { trackMeta } from "@/lib/meta-pixel";
 import { BRAND } from "@/lib/brand";
 
 export default function Pricing({ pageId, title, style, photos }: { pageId: string; title: string; style: string; photos: number }) {
@@ -14,6 +15,9 @@ export default function Pricing({ pageId, title, style, photos }: { pageId: stri
 
   async function pay(plan: PlanId) {
     setBusy(plan); setError("");
+    const event = { value: PLANS[plan].priceCents / 100, currency: "BRL", content_ids: [plan], content_type: "product", num_items: 1 };
+    trackMeta("AddToCart", event, `cart:${pageId}:${plan}`);
+    trackMeta("InitiateCheckout", event, `checkout:${pageId}:${plan}`);
     const r = await fetch("/api/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pageId, plan }) });
     const d = await r.json();
     if (!r.ok) { setError(d.error); setBusy(null); return; }

@@ -15,6 +15,8 @@ export default async function CheckoutPage({ params }: PageProps<"/checkout/[ord
   return (
     <Checkout
       orderId={order.id}
+      amountCents={order.amountCents}
+      plan={order.plan}
       paid={order.status === "paid"}
       failed={order.status === "failed"}
       pageId={order.pageId}

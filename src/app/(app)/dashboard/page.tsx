@@ -8,6 +8,8 @@ import { KINDS, PLANS, type KindId, type PlanId } from "@/lib/plans";
 import { pageIsLive } from "@/lib/util";
 import { reconcilePending } from "@/lib/payments";
 import LogoutButton from "./LogoutButton";
+import { recentPaidPurchases } from "@/lib/purchase-tracking";
+import PurchaseEvents from "@/components/analytics/PurchaseEvents";
 
 export const metadata = { title: "Minhas páginas" };
 
@@ -15,10 +17,12 @@ export default async function Dashboard() {
   const user = await getUser();
   if (!user) redirect("/auth/login?next=/dashboard");
   await reconcilePending(user.id);
+  const purchases = await recentPaidPurchases(user.id);
   const pages = await db.page.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, include: { _count: { select: { photos: true } } } });
 
   return (
     <main className="mx-auto max-w-5xl px-5 py-8">
+      <PurchaseEvents orders={purchases} />
       <header className="flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2 font-serif text-xl font-bold"><Heart className="h-6 w-6 text-brand" />{BRAND.name}</Link>
         <div className="flex items-center gap-4 text-sm"><span className="hidden text-neutral-600 sm:block">Olá, {user.name.split(" ")[0]}</span><LogoutButton /></div>

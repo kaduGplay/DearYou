@@ -1,15 +1,23 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 import { useEffect, useState } from "react";
+import { trackMeta } from "@/lib/meta-pixel";
 import { useRouter } from "next/navigation";
 
-type Props = { orderId: string; paid: boolean; failed: boolean; pageId: string; expiresAt: string | null; planName: string; price: string; pixCode: string; pixQr: string; canSimulate: boolean };
+type Props = { orderId: string; amountCents: number; plan: string; paid: boolean; failed: boolean; pageId: string; expiresAt: string | null; planName: string; price: string; pixCode: string; pixQr: string; canSimulate: boolean };
 
 export default function Checkout(p: Props) {
   const router = useRouter();
   const [paid, setPaid] = useState(p.paid);
   const [failed, setFailed] = useState(p.failed);
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (p.paid || p.failed || p.canSimulate || !p.pixCode) return;
+    const params = { value: p.amountCents / 100, currency: "BRL", content_ids: [p.plan], content_type: "product", payment_method: "pix" };
+    trackMeta("AddPaymentInfo", params, `payment-info:${p.orderId}`);
+    trackMeta("PIXGenerated", params, `pix-generated:${p.orderId}`, true);
+  }, [p.paid, p.failed, p.canSimulate, p.pixCode, p.amountCents, p.plan, p.orderId]);
 
   useEffect(() => {
     if (paid) {
@@ -45,7 +53,7 @@ export default function Checkout(p: Props) {
         {p.pixQr && (<img src={p.pixQr} alt="QR Code PIX" className="mx-auto mt-5 h-56 w-56" />)}
         <p className="mt-4 text-left text-xs font-semibold">PIX copia e cola</p>
         <textarea readOnly value={p.pixCode} rows={3} className="input mt-1 !text-xs" />
-        <button className="btn btn-primary mt-3 w-full" onClick={() => { navigator.clipboard.writeText(p.pixCode); setCopied(true); setTimeout(() => setCopied(false), 2000); }}>{copied ? "Copiado ✓" : "Copiar código PIX"}</button>
+        <button className="btn btn-primary mt-3 w-full" onClick={async () => { try { await navigator.clipboard.writeText(p.pixCode); setCopied(true); trackMeta("PIXCopied", { value: p.amountCents / 100, currency: "BRL", content_ids: [p.plan] }, `pix-copied:${p.orderId}`, true); setTimeout(() => setCopied(false), 2000); } catch { setCopied(false); } }}>{copied ? "Copiado ✓" : "Copiar código PIX"}</button>
         {p.expiresAt && <p className="mt-3 text-xs text-[#6b6b80]" suppressHydrationWarning>Este PIX vale até {new Date(p.expiresAt).toLocaleString("pt-BR", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}</p>}
         <p className="mt-4 text-xs text-[#6b6b80]">Aguardando pagamento… assim que o PIX for pago, sua página é publicada automaticamente.</p>
         {p.canSimulate && (

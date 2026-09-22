@@ -54,3 +54,19 @@ As tentativas de login, cadastro, recuperação, busca e mensagens usam contador
 Também: `/amizade`, `/pai`, `/exemplo*`, `/precos`, `/termos`, `/privacidade`, `/auth/login`, `/auth/forgot-password`, `/dashboard`, `/editor/[id]`.
 
 Nunca adicione `.env`, tokens, banco local ou fotos de usuários ao Git. O `.env.example` contém somente modelos sem credenciais.
+
+## Pixel da Meta
+
+Pixel `27993934270289164`, instalado no layout com carregamento assíncrono. Eventos: `PageView`, `ViewContent`, `CompleteRegistration`, `Lead`, `AddToCart`, `InitiateCheckout`, `AddPaymentInfo`, `Purchase`; personalizados: `CustomizeStep`, `Login`, `PIXGenerated`, `PIXCopied`. Não são enviados nomes, e-mails, senhas, mensagens ou fotos como parâmetros dos eventos. A coleta automática de formulários está desativada. Recuperação de senha com token e preview embutido não disparam PageView.
+
+`Purchase` recebe o valor do pedido no banco, convertido de centavos para BRL. Só pedidos pagos via VoidPay são elegíveis: PIX pendente/gerado, falhas e pagamentos simulados não contam como compra. A tela de sucesso valida autenticação, titularidade e pagamento no servidor. O painel também recupera compras confirmadas nas últimas 24 horas quando o cliente retorna. O ID `purchase:<orderId>` é estável; armazenamento local e memória evitam repetir o evento no mesmo navegador.
+
+A instalação atual usa o Pixel no navegador. Bloqueadores, limpeza de armazenamento, navegadores diferentes e clientes que pagam sem retornar podem afetar a medição. A API de Conversões depende de um token da Meta específico deste Pixel e ainda não está configurada. Não confundir o token da Meta com o token da Vercel.
+
+Validação automatizada sem enviar compras fictícias à Meta:
+
+```bash
+node --test tests/meta-pixel.test.mjs
+```
+
+No Gerenciador de Eventos, use Testar eventos para validar a recepção na conta da Meta.

@@ -41,6 +41,7 @@ export async function POST(req: Request) {
   if (d.style === "quiz" && (!d.quiz || d.quiz.questions.length < 3)) return err("O quiz precisa de ao menos 3 perguntas");
 
   let user = await getUser();
+  const createdAccount = !user;
   if (!user) {
     if (!d.account) return err("Crie sua conta para salvar a página", 401);
     if (await db.user.findUnique({ where: { email: d.account.email } })) return err("Este e-mail já tem conta. Use “Já tenho conta” para entrar.", 409);
@@ -61,5 +62,5 @@ export async function POST(req: Request) {
     const ev = await db.timelineEvent.create({ data: { pageId: page.id, date: new Date(e.date + "T12:00:00"), title: e.title, text: e.text } });
     timelineIds.push(ev.id);
   }
-  return json({ id: page.id, timelineIds });
+  return json({ id: page.id, timelineIds, createdAccount });
 }

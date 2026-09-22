@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { PageData } from "../public/types";
+import { trackMeta } from "@/lib/meta-pixel";
 import MusicSearch from "../MusicSearch";
 import { STYLES, THEMES, THEME_ORDER, type KindId, type StyleId, type ThemeId } from "@/lib/plans";
 import { musicEmbed } from "@/lib/util";
@@ -33,12 +34,12 @@ const HEARTS = [[6, 4], [92, 2], [14, 30], [48, 22], [72, 40], [4, 62], [58, 74]
 const maskDate = (v: string) => { const d = v.replace(/\D/g, "").slice(0, 8); return d.length > 4 ? `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}` : d.length > 2 ? `${d.slice(0, 2)}/${d.slice(2)}` : d; };
 const toIso = (v: string) => { const m = v.match(/^(\d{2})\/(\d{2})\/(\d{4})$/); if (!m) return ""; const [, dd, mm, yy] = m; const d = new Date(+yy, +mm - 1, +dd); return d.getFullYear() === +yy && d.getMonth() === +mm - 1 && d.getDate() === +dd ? `${yy}-${mm}-${dd}` : ""; };
 
-const field = "w-full rounded-2xl border border-pink-200/60 bg-pink-50/70 px-4 py-3.5 text-center text-[15px] text-[#1a1a2e] outline-none transition placeholder:text-[#6b6b80]/80 focus:border-pink-300 focus:ring-4 focus:ring-pink-200/60";
+const field = "min-w-0 w-full rounded-2xl border border-pink-200/60 bg-pink-50/70 px-4 py-3.5 text-center text-[15px] text-[#1a1a2e] outline-none transition placeholder:text-[#6b6b80]/80 focus:border-pink-300 focus:ring-4 focus:ring-pink-200/60";
 const fieldL = field.replace("text-center", "text-left");
 const skipBtn = "flex w-full items-center justify-center gap-2 rounded-2xl border border-pink-200/70 bg-pink-50 py-3.5 text-sm font-medium text-pink-500 transition hover:bg-pink-100";
 
 function Title({ t, s }: { t: string; s?: string }) {
-  return (<div className="-mx-16 text-center max-sm:mx-0"><h1 className="mx-auto max-w-[596px] whitespace-nowrap font-serif text-[26px] font-bold leading-tight sm:text-[30px] max-sm:whitespace-normal">{t}</h1>{s && <p className="mt-2 text-[15px] text-[#6b6b80]">{s}</p>}</div>);
+  return (<div className="text-center lg:-mx-16"><h1 className="mx-auto max-w-[596px] break-words font-serif text-[24px] font-bold leading-tight sm:text-[30px]">{t}</h1>{s && <p className="mt-2 text-[15px] text-[#6b6b80]">{s}</p>}</div>);
 }
 
 export default function Wizard({ kind, loggedIn, userName }: { kind: KindId; loggedIn: boolean; userName?: string }) {
@@ -63,6 +64,22 @@ export default function Wizard({ kind, loggedIn, userName }: { kind: KindId; log
   const [hasAccount, setHasAccount] = useState(false);
   const [step, setStep] = useState(0);
   const [showPreview, setShowPreview] = useState(false);
+  const previewButton = useRef<HTMLButtonElement>(null);
+  const closePreviewButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!showPreview) return;
+    const previous = document.body.style.overflow;
+    const trigger = previewButton.current;
+    document.body.style.overflow = "hidden";
+    closePreviewButton.current?.focus();
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setShowPreview(false); };
+    window.addEventListener("keydown", escape);
+    return () => {
+      document.body.style.overflow = previous;
+      window.removeEventListener("keydown", escape);
+      trigger?.focus();
+    };
+  }, [showPreview]);
   const [errState, setErrState] = useState<{ m: string; s: number } | null>(null);
   const [progress, setProgress] = useState<{ label: string; failed?: boolean } | null>(null);
   const [popular, setPopular] = useState<Track[] | null>(null);
@@ -72,6 +89,12 @@ export default function Wizard({ kind, loggedIn, userName }: { kind: KindId; log
 
   const steps = useMemo(() => [...(style === "quiz" ? ["estilo", "tema", "dados", "data", "premio", "perguntas", "regras"] : ["estilo", "tema", "dados", "data", "mensagem", "fotos", "musica", "timeline"]), ...(loggedIn ? [] : ["conta"])], [style, loggedIn]);
   const cur = steps[step];
+  const trackedStep = useRef("");
+  useEffect(() => {
+    if (trackedStep.current === cur) return;
+    trackedStep.current = cur;
+    trackMeta("CustomizeStep", { step: cur, kind }, undefined, true);
+  }, [cur, kind]);
   // a mensagem de erro só vale para a etapa em que foi gerada
   const error = errState && errState.s === step ? errState.m : "";
   const setError = (m: string) => setErrState({ m, s: step });
@@ -138,6 +161,8 @@ export default function Wizard({ kind, loggedIn, userName }: { kind: KindId; log
         const d = await r.json();
         if (!r.ok) throw new Error(d.error);
         createdId.current = d.id;
+        if (d.createdAccount) trackMeta("CompleteRegistration", { status: true, content_name: "DearYou" }, `registration:${d.id}`);
+        trackMeta("Lead", { content_category: kind }, `lead:${d.id}`);
         timelineIds.current = d.timelineIds ?? [];
       }
       await uploadPhotos(createdId.current!);
@@ -209,8 +234,12 @@ export default function Wizard({ kind, loggedIn, userName }: { kind: KindId; log
       {HEARTS.map(([x, y], i) => (<Ico key={i} n="heart" fill className="drift pointer-events-none absolute h-3.5 w-3.5" style={{ left: `${x}%`, top: `${y}%`, color: i % 5 === 0 ? "#f472b6" : "#d9d9df", opacity: 0.55, animationDelay: `${i * 0.9}s` }} />))}
 
       {/* topo: progresso */}
-      <div className="relative mx-auto w-full max-w-[480px] px-4 pt-11">
-        <div className="flex items-center justify-between text-sm"><span className="text-[#4b4b60]">{msg}</span><span className="font-semibold text-pink-400">{pct}%</span></div>
+      <div className="relative mx-auto w-full max-w-[480px] px-4 pt-4 sm:pt-8">
+        <div className="mb-3 flex items-center justify-between gap-3 lg:hidden">
+          <span className="text-sm font-medium text-[#6b6b80]">Seu presente</span>
+          <button ref={previewButton} type="button" aria-haspopup="dialog" aria-expanded={showPreview} onClick={() => setShowPreview(true)} className="flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-pink-200 bg-white px-4 text-sm font-medium text-pink-600"><Ico n="eye" className="h-4 w-4" />Ver prévia</button>
+        </div>
+        <div className="flex items-center justify-between gap-3 text-sm"><span className="text-[#4b4b60]">{msg}</span><span className="font-semibold text-pink-400">{pct}%</span></div>
         <div className="mt-3 h-2 overflow-hidden rounded-full bg-pink-50"><div className="wz-bar h-full rounded-full transition-all duration-500" style={{ width: `${pct}%` }} /></div>
         <div className="mt-3 flex justify-between px-0.5">
           {steps.map((s, i) => (<span key={s} className={`block rounded-full transition-all ${i < step ? "h-1.5 w-1.5 bg-pink-400" : i === step ? "h-2.5 w-2.5 -translate-y-[2px] bg-pink-400" : "h-1.5 w-1.5 bg-[#d9d9e0]"}`} />))}
@@ -220,12 +249,12 @@ export default function Wizard({ kind, loggedIn, userName }: { kind: KindId; log
 
       <div className="relative mx-auto grid w-full max-w-[1024px] gap-6 px-4 lg:grid-cols-[596px_1fr] lg:gap-0 lg:px-0">
         {/* coluna do passo */}
-        <div className="flex min-h-[calc(100vh-190px)] flex-col">
+        <div className="flex min-w-0 min-h-[calc(100svh-200px)] flex-col">
           <div className="flex flex-1 items-center justify-center py-8">
-            <div key={cur} className="wz-in w-full max-w-[448px]">
+            <div key={cur} className="wz-in min-w-0 w-full max-w-[448px]">
               {cur === "estilo" && (<>
                 <Title t="Escolha o estilo do presente" s="Como você quer surpreender quem você ama?" />
-                <div className="mt-8 grid grid-cols-3 gap-3">
+                <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3">
                   {(Object.keys(STYLES) as StyleId[]).map((k) => {
                     const sel = style === k;
                     const icon = k === "classica" ? <Ico n="heart" fill className="h-5 w-5 text-pink-400" /> : k === "carta" ? <Ico n="mail" className="h-5 w-5 text-pink-400" /> : k === "interativa" ? <span className="text-lg">✉️</span> : <Ico n="trophy" className="h-5 w-5 text-pink-400" />;
@@ -240,7 +269,7 @@ export default function Wizard({ kind, loggedIn, userName }: { kind: KindId; log
                     );
                   })}
                 </div>
-                <p className="mt-8 text-center text-sm text-[#6b6b80]">Você pode visualizar o resultado ao lado enquanto personaliza</p>
+                <p className="mt-8 text-center text-sm text-[#6b6b80]"><span className="lg:hidden">Use “Ver prévia” no topo para conferir seu presente.</span><span className="hidden lg:inline">Você pode visualizar o resultado ao lado enquanto personaliza</span></p>
               </>)}
 
               {cur === "tema" && (<>
@@ -388,11 +417,11 @@ export default function Wizard({ kind, loggedIn, userName }: { kind: KindId; log
                 <Title t="Último passo!" s="Crie sua conta para salvar e enviar o presente" />
                 <div className="mt-6 flex justify-center"><span className="grid h-14 w-14 place-items-center rounded-full bg-pink-100"><Ico n="heart" fill className="h-6 w-6 text-pink-400" /></span></div>
                 <p className="mt-3 text-center text-sm text-[#4b4b60]">{hasAccount ? "Entre com a sua conta para continuar" : "Quase lá! Salve sua página criando uma conta"}</p>
-                <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {!hasAccount && <input className={fieldL} placeholder="Seu nome" value={acc.name} onChange={(e) => setAcc({ ...acc, name: e.target.value })} autoComplete="name" />}
-                  <input type="email" className={`${fieldL} ${hasAccount ? "col-span-2" : ""}`} placeholder="seu@email.com" value={acc.email} onChange={(e) => setAcc({ ...acc, email: e.target.value })} autoComplete="email" />
+                  <input type="email" className={`${fieldL} ${hasAccount ? "sm:col-span-2" : ""}`} placeholder="seu@email.com" value={acc.email} onChange={(e) => setAcc({ ...acc, email: e.target.value })} autoComplete="email" />
                   {!hasAccount && <input className={fieldL} inputMode="tel" placeholder="(11) 99999-9999" value={acc.phone} onChange={(e) => setAcc({ ...acc, phone: e.target.value })} autoComplete="tel" />}
-                  <div className={`relative ${hasAccount ? "col-span-2" : ""}`}><input type={showPw ? "text" : "password"} className={`${fieldL} pr-11`} placeholder="Senha (mín. 6 caracteres)" value={acc.password} onChange={(e) => setAcc({ ...acc, password: e.target.value })} onKeyDown={(e) => e.key === "Enter" && next()} autoComplete={hasAccount ? "current-password" : "new-password"} /><button type="button" onClick={() => setShowPw(!showPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6b6b80]"><Ico n="eye" className="h-4 w-4" /></button></div>
+                  <div className={`relative ${hasAccount ? "sm:col-span-2" : ""}`}><input type={showPw ? "text" : "password"} className={`${fieldL} pr-11`} placeholder="Senha (mín. 6 caracteres)" value={acc.password} onChange={(e) => setAcc({ ...acc, password: e.target.value })} onKeyDown={(e) => e.key === "Enter" && next()} autoComplete={hasAccount ? "current-password" : "new-password"} /><button type="button" onClick={() => setShowPw(!showPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6b6b80]"><Ico n="eye" className="h-4 w-4" /></button></div>
                 </div>
                 <p className="mt-5 text-center text-xs text-[#6b6b80]">{hasAccount ? "Ainda não tem conta?" : "Já tem conta?"} <button className="font-medium text-pink-500" onClick={() => { setHasAccount(!hasAccount); setError(""); }}>{hasAccount ? "Criar conta" : "Fazer login"}</button></p>
                 <p className="mt-2 text-center text-[11px] text-[#9b9bb0]">Ao continuar você aceita os <Link className="underline" href="/termos">Termos</Link> e a <Link className="underline" href="/privacidade">Privacidade</Link>.</p>
@@ -403,14 +432,14 @@ export default function Wizard({ kind, loggedIn, userName }: { kind: KindId; log
           </div>
 
           {/* barra inferior */}
-          <div className="flex items-center justify-between border-t border-pink-100 py-4">
+          <div className="grid grid-cols-2 items-center gap-3 border-t border-pink-100 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:flex sm:justify-between">
             {step === 0 ? (
-              <Link href="/" className="flex items-center gap-2 px-3 text-sm font-medium"><Ico n="arrow-left" className="h-4 w-4" />Cancelar</Link>
+              <Link href="/" className="flex min-h-11 items-center gap-2 px-3 text-sm font-medium"><Ico n="arrow-left" className="h-4 w-4" />Cancelar</Link>
             ) : (
-              <button onClick={() => setStep((s) => s - 1)} className="flex items-center gap-2 px-3 text-sm font-medium"><Ico n="arrow-left" className="h-4 w-4" />Voltar</button>
+              <button onClick={() => setStep((s) => s - 1)} className="flex min-h-11 items-center gap-2 px-3 text-sm font-medium"><Ico n="arrow-left" className="h-4 w-4" />Voltar</button>
             )}
-            <span className="text-sm text-[#6b6b80]"><span className="mr-1">{STEP_META[cur].emoji}</span>{STEP_META[cur].label}</span>
-            <button onClick={next} className={`flex items-center gap-2 rounded-xl bg-pink-400 px-4 py-2.5 text-sm font-medium text-white shadow-[0_8px_20px_-8px_rgba(244,114,182,.9)] transition hover:bg-pink-500 ${valid ? "" : "opacity-50"}`}>
+            <span className="order-first col-span-2 text-center text-sm text-[#6b6b80] sm:order-none"><span className="mr-1">{STEP_META[cur].emoji}</span>{STEP_META[cur].label}</span>
+            <button onClick={next} className={`flex min-h-11 items-center justify-center justify-self-end gap-2 rounded-xl bg-pink-400 px-4 py-2.5 text-sm font-medium text-white shadow-[0_8px_20px_-8px_rgba(244,114,182,.9)] transition hover:bg-pink-500 ${valid ? "" : "opacity-50"}`}>
               {isLast ? <><Ico n="check" className="h-4 w-4" />{cur === "conta" ? "Criar Pagina" : "Criar Página"}</> : <>Continuar<Ico n="arrow-right" className="h-4 w-4" /></>}
             </button>
           </div>
@@ -425,21 +454,26 @@ export default function Wizard({ kind, loggedIn, userName }: { kind: KindId; log
         </aside>
       </div>
 
-      <button onClick={() => setShowPreview(true)} className="fixed bottom-24 right-4 z-40 flex items-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-medium text-pink-500 shadow-lg ring-1 ring-pink-100 lg:hidden"><Ico n="eye" className="h-4 w-4" />Preview</button>
       {showPreview && (
-        <div className="fixed inset-0 z-50 bg-black/60 p-4 lg:hidden" onClick={() => setShowPreview(false)}>
-          <div className="mx-auto flex h-full max-w-sm flex-col items-center justify-center gap-3" onClick={(e) => e.stopPropagation()}><Phone><PreviewFrame data={preview} /></Phone><button className="btn btn-primary" onClick={() => setShowPreview(false)}>Fechar preview</button></div>
+        <div role="dialog" aria-modal="true" aria-label="Prévia do seu presente" className="fixed inset-0 z-50 h-dvh bg-black/60 p-3 lg:hidden" onClick={() => setShowPreview(false)}>
+          <div className="mx-auto flex h-full min-h-0 w-full max-w-sm flex-col overflow-hidden rounded-3xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-pink-100 px-4 py-2">
+              <p className="text-sm font-semibold">Prévia do presente</p>
+              <button ref={closePreviewButton} type="button" className="min-h-11 rounded-xl px-3 text-sm font-medium text-pink-600" onClick={() => setShowPreview(false)}>Fechar prévia</button>
+            </div>
+            <div className="min-h-0 flex-1"><PreviewFrame data={preview} fullSize /></div>
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-function PreviewFrame({ data }: { data: PageData }) {
+function PreviewFrame({ data, fullSize = false }: { data: PageData; fullSize?: boolean }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const send = () => ref.current?.contentWindow?.postMessage({ type: "dy-preview", data }, window.location.origin);
   useEffect(() => { send(); const on = (e: MessageEvent) => { if (e.data?.type === "dy-preview-ready") send(); }; window.addEventListener("message", on); return () => window.removeEventListener("message", on); });
-  return <iframe ref={ref} title="Preview em tempo real" src="/preview-embed" onLoad={send} style={{ width: 390, height: 852, border: 0, transform: "scale(0.682)", transformOrigin: "top left" }} />;
+  return <iframe ref={ref} title="Preview em tempo real" src="/preview-embed" onLoad={send} style={fullSize ? { display: "block", width: "100%", height: "100%", border: 0 } : { width: 390, height: 852, border: 0, transform: "scale(0.682)", transformOrigin: "top left" }} />;
 }
 
 function Phone({ children }: { children: React.ReactNode }) {

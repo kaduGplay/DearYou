@@ -1,0 +1,26 @@
+/* Keep the document anchored while allowing intentional horizontal galleries. */
+html, body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+  overscroll-behavior-x: none;
+}
+body { min-width: 0; }
+@supports not (overflow: clip) {
+  html, body { overflow-x: hidden; }
+}
+@media (max-width: 639px) {
+  input:not([type="range"]):not([type="checkbox"]):not([type="radio"]), textarea, select {
+    min-width: 0;
+    max-width: 100%;
+    font-size: 16px;
+  }
+  .site-shell header nav:last-child { gap: 4px; }
+  .site-shell header nav:last-child button { min-height: 44px; padding-inline: 10px; font-size: 13px; }
+}
+@media (max-width: 359px) {
+  .site-shell header > div { padding-inline: 12px; }
+  .site-shell header > div > a { gap: 4px; }
+  .site-shell header > div > a span { font-size: 18px; }
+  .site-shell header nav:last-child button { padding-inline: 8px; font-size: 12px; }
+}
