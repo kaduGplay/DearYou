@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { queueMetaConversion, tryFlushMetaConversions } from "../meta-conversions";
 import { PLANS, type PlanId } from "../plans";
 import { mockProvider } from "./mock";
 import { voidpayProvider } from "./voidpay";
@@ -16,8 +17,8 @@ export interface PaymentProvider {
     callbackUrl: string;
     customer: { name: string; email: string; phone?: string | null; document?: string | null };
   }): Promise<PixCharge>;
-  /** Consulta o status de uma cobrança (o VoidPay confirma por webhook; aqui retorna "pending"). */
-  getStatus(providerRef: string): Promise<"pending" | "paid" | "failed">;
+  /** Consulta o status autenticado no provedor. */
+  getStatus(providerRef: string, amountCents?: number): Promise<"pending" | "paid" | "failed">;
 }
 
 export function getProvider(): PaymentProvider {
@@ -27,36 +28,49 @@ export function getProvider(): PaymentProvider {
   return mockProvider;
 }
 
-/** Marca o pedido como pago e publica a página. Idempotente. */
+/** Atualização condicional e publicação na mesma transação: callbacks concorrentes não renovam o prazo. */
 export async function settleOrder(orderId: string) {
-  const order = await db.order.findUnique({ where: { id: orderId } });
-  if (!order || order.status === "paid") return order;
-  const plan = PLANS[order.plan as PlanId];
-  const now = new Date();
-  await db.$transaction([
-    db.order.update({ where: { id: order.id }, data: { status: "paid", paidAt: now } }),
-    db.page.update({
-      where: { id: order.pageId },
-      data: {
-        plan: plan.id,
-        status: "published",
-        publishedAt: now,
-        expiresAt: plan.durationHours ? new Date(now.getTime() + plan.durationHours * 3600_000) : null,
-        editableUntil: new Date(now.getTime() + 24 * 3600_000),
-      },
-    }),
-  ]);
-  return db.order.findUnique({ where: { id: orderId } });
+  const result = await db.$transaction(async (tx) => {
+    const order = await tx.order.findUnique({ where: { id: orderId } });
+    if (!order) return null;
+    const plan = PLANS[order.plan as PlanId];
+    if (!plan) throw new Error("Plano desconhecido no pedido");
+    const now = new Date();
+    const changed = await tx.order.updateMany({ where: { id: orderId, status: { not: "paid" } }, data: { status: "paid", paidAt: now } });
+    if (changed.count) await tx.page.update({ where: { id: order.pageId }, data: {
+      plan: plan.id, status: "published", publishedAt: now,
+      expiresAt: plan.durationHours ? new Date(now.getTime() + plan.durationHours * 3600_000) : null,
+      editableUntil: new Date(now.getTime() + 24 * 3600_000),
+    } });
+    await queueMetaConversion(tx, orderId, "Purchase");
+    return tx.order.findUnique({ where: { id: orderId } });
+  }, { timeout: 15000 });
+  await tryFlushMetaConversions(orderId);
+  return result;
 }
 
-/** Confere pagamentos pendentes do usuário (ele pode ter pago e fechado a tela do PIX antes do aviso chegar). */
+/** Falhas atrasadas nunca rebaixam um pedido já pago. */
+export async function failOrder(orderId: string) {
+  await db.order.updateMany({ where: { id: orderId, status: "pending" }, data: { status: "failed" } });
+}
+
+export async function syncOrder(orderId: string) {
+  const order = await db.order.findUnique({ where: { id: orderId } });
+  if (!order) return null;
+  if (order.status === "paid") { await tryFlushMetaConversions(orderId); return order; }
+  if (!order.providerRef) throw new Error("Cobrança ainda está sendo salva");
+  const provider = order.provider === "voidpay" ? voidpayProvider : getProvider();
+  const status = await provider.getStatus(order.providerRef, order.amountCents);
+  await db.order.update({ where: { id: order.id }, data: { providerCheckedAt: new Date() } });
+  if (status === "paid") return settleOrder(order.id);
+  if (status === "failed") await failOrder(order.id);
+  return db.order.findUnique({ where: { id: order.id } });
+}
+
+/** Complementa o webhook quando o cliente volta ao painel. */
 export async function reconcilePending(userId: string) {
   const pending = await db.order.findMany({ where: { userId, status: "pending", providerRef: { not: null }, createdAt: { gt: new Date(Date.now() - 48 * 3600_000) } } });
-  for (const o of pending) {
-    try {
-      const st = await getProvider().getStatus(o.providerRef!);
-      if (st === "paid") await settleOrder(o.id);
-      else if (st === "failed") await db.order.update({ where: { id: o.id }, data: { status: "failed" } });
-    } catch { /* provedor indisponível: tenta de novo na próxima visita */ }
+  for (const order of pending) {
+    try { await syncOrder(order.id); } catch { /* Gateway indisponível: preserva o pedido para tentar depois. */ }
   }
 }

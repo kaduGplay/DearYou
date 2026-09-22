@@ -3,7 +3,9 @@ import { db } from "@/lib/db";
 import { getUser } from "@/lib/auth";
 import { err, json } from "@/lib/guard";
 import { PLANS, type PlanId } from "@/lib/plans";
-import { getProvider } from "@/lib/payments";
+import { getProvider, failOrder } from "@/lib/payments";
+import { captureMetaAttribution } from "@/lib/meta-conversion-payload";
+import { queueMetaConversion, tryFlushMetaConversions } from "@/lib/meta-conversions";
 
 export async function POST(req: Request) {
   const user = await getUser();
@@ -21,7 +23,7 @@ export async function POST(req: Request) {
 
   let provider;
   try { provider = getProvider(); } catch (e) { return err(e instanceof Error ? e.message : "Pagamento indisponível", 503); }
-  const order = await db.order.create({ data: { userId: user.id, pageId: page.id, plan: p.id, amountCents: p.priceCents, method: "pix", provider: provider.name } });
+  const order = await db.order.create({ data: { userId: user.id, pageId: page.id, plan: p.id, amountCents: p.priceCents, method: "pix", provider: provider.name, metaAttribution: captureMetaAttribution(req) } });
   try {
     const origin = process.env.APP_URL || new URL(req.url).origin;
     const charge = await provider.createPix({
@@ -33,10 +35,14 @@ export async function POST(req: Request) {
       customer: { name: user.name, email: user.email, phone: user.phone, document: cpf },
     });
     const pixQr = charge.pixQr ?? (await QRCode.toDataURL(charge.pixCode, { margin: 1, width: 320 }));
-    await db.order.update({ where: { id: order.id }, data: { providerRef: charge.providerRef, pixCode: charge.pixCode, pixQr, webhookToken: charge.webhookToken ?? null, expiresAt: charge.expiresAt ?? null } });
+    await db.$transaction(async (tx) => {
+      await tx.order.update({ where: { id: order.id }, data: { pixGeneratedAt: new Date(), providerRef: charge.providerRef, pixCode: charge.pixCode, pixQr, webhookToken: charge.webhookToken ?? null, expiresAt: charge.expiresAt ?? null } });
+      await queueMetaConversion(tx, order.id, "PIXGenerated");
+    });
+    await tryFlushMetaConversions(order.id);
     return json({ orderId: order.id });
   } catch (e) {
-    await db.order.update({ where: { id: order.id }, data: { status: "failed" } });
+    await failOrder(order.id);
     return err(e instanceof Error ? e.message : "Não foi possível gerar o PIX", 502);
   }
 }

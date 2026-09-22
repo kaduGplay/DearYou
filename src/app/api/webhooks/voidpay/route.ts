@@ -1,38 +1,37 @@
-import { timingSafeEqual } from "node:crypto";
 import { db } from "@/lib/db";
 import { err, json } from "@/lib/guard";
-import { settleOrder } from "@/lib/payments";
+import { syncOrder } from "@/lib/payments";
+import { record, textField, transactionData, safeTokenEqual } from "@/lib/payments/voidpay-status";
+import { allow } from "@/lib/ratelimit";
 
-const PAID = new Set(["COMPLETED", "OK", "PAID", "APPROVED", "CONFIRMED"]);
-const same = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
-const pick = (o: unknown, ...keys: string[]): string | undefined => {
-  for (const k of keys) { const v = (o as Record<string, unknown> | null)?.[k]; if (typeof v === "string" && v) return v; }
-};
+export const maxDuration = 60;
 
-/**
- * Webhook do VoidPay (callbackUrl). Autenticado pelo webhookToken devolvido na criação da cobrança.
- * O formato exato do payload não veio na documentação recebida: aceita variações comuns
- * (token no corpo ou em header; id em transactionId/id/identifier; status em status/transactionStatus).
- */
+/** O callback notifica; a consulta autenticada à VoidPay confirma status, valor e transação. */
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
-  if (!body || typeof body !== "object") return err("Payload inválido");
-  const nested = (body as { transaction?: unknown }).transaction ?? body;
-
-  const ref = pick(nested, "transactionId", "id") ?? pick(body, "transactionId");
-  const identifier = pick(nested, "identifier", "clientIdentifier") ?? pick(body, "identifier");
-  const order = (ref && (await db.order.findFirst({ where: { providerRef: ref } }))) || (identifier ? await db.order.findUnique({ where: { id: identifier } }) : null);
+  if (!Object.keys(record(body)).length) return err("Payload inválido");
+  const data = transactionData(body);
+  const reference = textField(data, "transactionId", "id") ?? textField(body, "transactionId");
+  const identifier = textField(data, "identifier", "clientIdentifier") ?? textField(body, "identifier", "clientIdentifier");
+  const order = (reference ? await db.order.findFirst({ where: { provider: "voidpay", providerRef: reference } }) : null)
+    ?? (identifier ? await db.order.findUnique({ where: { id: identifier } }) : null);
   if (!order || order.provider !== "voidpay") return err("Pedido não encontrado", 404);
-
-  const auth = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-  const token = pick(body, "webhookToken", "token") ?? pick(nested, "webhookToken", "token") ?? req.headers.get("x-webhook-token") ?? auth ?? "";
-  if (!order.webhookToken || !token || !same(token, order.webhookToken)) {
-    console.warn("[voidpay] webhook recusado: token ausente ou inválido. Campos recebidos:", Object.keys(body));
-    return err("Não autorizado", 401);
+  if (reference && order.providerRef && reference !== order.providerRef) return err("Transação divergente", 400);
+  if (identifier && identifier !== order.id) return err("Identificador divergente", 400);
+  const token = textField(body, "webhookToken", "token") ?? textField(data, "webhookToken", "token")
+    ?? req.headers.get("x-webhook-token") ?? req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+  if (token && order.webhookToken && !safeTokenEqual(token, order.webhookToken)) return err("Não autorizado", 401);
+  // Callbacks sem token não têm seu status aceito: só podem solicitar a consulta autenticada à VoidPay.
+  if (!await allow(`voidpay-webhook:${order.id}`, 60, 60_000)) return err("Tente novamente em instantes", 429);
+  if (!order.providerRef) return err("Cobrança ainda sendo salva. Reenvie o aviso.", 503);
+  await db.order.update({ where: { id: order.id }, data: { webhookReceivedAt: new Date() } });
+  try {
+    const updated = await syncOrder(order.id);
+    const declared = textField(data, "status", "transactionStatus") ?? textField(body, "event", "status") ?? "";
+    if (updated?.status === "pending" && /(?:^|[._])(?:paid|completed|approved|confirmed)$/i.test(declared)) return err("Confirmação ainda não disponível no gateway. Reenvie o aviso.", 503);
+    return json({ ok: true, status: updated?.status });
+  } catch {
+    // Não confirma recebimento definitivo se não foi possível conferir o pagamento.
+    return err("Não foi possível consultar o pagamento. Reenvie o aviso.", 503);
   }
-
-  const status = (pick(nested, "transactionStatus", "status") ?? pick(body, "event", "status") ?? "").toUpperCase();
-  if (PAID.has(status)) await settleOrder(order.id);
-  else if (["FAILED", "EXPIRED", "CANCELED", "REJECTED"].includes(status)) await db.order.update({ where: { id: order.id }, data: { status: "failed" } });
-  return json({ ok: true });
 }

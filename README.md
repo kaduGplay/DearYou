@@ -61,7 +61,7 @@ Pixel `27993934270289164`, instalado no layout com carregamento assíncrono. Eve
 
 `Purchase` recebe o valor do pedido no banco, convertido de centavos para BRL. Só pedidos pagos via VoidPay são elegíveis: PIX pendente/gerado, falhas e pagamentos simulados não contam como compra. A tela de sucesso valida autenticação, titularidade e pagamento no servidor. O painel também recupera compras confirmadas nas últimas 24 horas quando o cliente retorna. O ID `purchase:<orderId>` é estável; armazenamento local e memória evitam repetir o evento no mesmo navegador.
 
-A instalação atual usa o Pixel no navegador. Bloqueadores, limpeza de armazenamento, navegadores diferentes e clientes que pagam sem retornar podem afetar a medição. A API de Conversões depende de um token da Meta específico deste Pixel e ainda não está configurada. Não confundir o token da Meta com o token da Vercel.
+O Pixel continua ativo no navegador. O envio pelo servidor está implementado e é ativado por `META_CAPI_ACCESS_TOKEN`; sem esse token, os eventos ficam na fila e não são apresentados como entregues à Meta. Não confundir o token da Meta com o token da Vercel.
 
 Validação automatizada sem enviar compras fictícias à Meta:
 
@@ -70,3 +70,23 @@ node --test tests/meta-pixel.test.mjs
 ```
 
 No Gerenciador de Eventos, use Testar eventos para validar a recepção na conta da Meta.
+
+## Webhook e confirmação de pagamentos
+
+Cada PIX é criado com `callbackUrl=${APP_URL}/api/webhooks/voidpay`. Em produção: `https://dearyou-presenteperfeito.vercel.app/api/webhooks/voidpay`. O endereço é enviado por cobrança; não depende de cadastrar manualmente cada PIX no painel da VoidPay.
+
+O webhook localiza o pedido pelo ID da transação ou identificador da cobrança. Tokens recebidos são conferidos; notificações sem token só podem solicitar uma consulta autenticada à VoidPay. O status declarado no corpo não basta para publicar: o servidor valida ID, valor e status pela API do gateway. Se a consulta falha ou o aviso chega antes da confirmação estar disponível, responde 503 para solicitar reenvio.
+
+Pagamento e publicação são atualizados em uma transação no banco. Avisos repetidos não renovam a validade da página, e falhas atrasadas não rebaixam pedidos pagos. `pixGeneratedAt`, `paidAt`, `webhookReceivedAt` e `providerCheckedAt` registram os momentos relevantes. Reembolso e chargeback precisam de tratamento próprio; não são interpretados como nova compra.
+
+## API de Conversões e recuperação
+
+A tabela `MetaConversion` guarda os eventos `PIXGenerated` e `Purchase`. Seus IDs correspondem aos eventos do navegador (`pix-generated:<pedido>` e `purchase:<pedido>`) para deduplicação na Meta. Valores vêm do banco em BRL. A atribuição é capturada no checkout do cliente, nunca pelo IP da VoidPay. E-mail e identificador do usuário são enviados em SHA-256.
+
+Configure `META_CAPI_ACCESS_TOKEN` na Vercel para ativar o envio. `META_TEST_EVENT_CODE` é opcional para testes na Meta e deve ser removido após a validação. Eventos só recebem `sent` após confirmação da API; erros permanecem na fila com novas tentativas, preservando os horários originais. Eventos com mais de sete dias não são reenviados.
+
+`GET /api/cron/payments` exige `CRON_SECRET`, configurado na Vercel. A rotina diária (`0 8 * * *`, UTC, conforme disponibilidade do agendador) consulta até 12 pedidos pendentes recentes e tenta reenviar até 25 eventos. É uma recuperação adicional aos callbacks imediatos e às consultas do checkout/painel. O plano Hobby não permite execução mais frequente; alto volume exige ampliar o processamento de recuperação.
+
+```bash
+node --test tests/*.test.mjs
+```

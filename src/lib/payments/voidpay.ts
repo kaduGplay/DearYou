@@ -1,4 +1,5 @@
 import type { PaymentProvider } from "./index";
+import { providerStatus } from "./voidpay-status";
 
 /**
  * Integração VoidPay: POST {base}/api/v1/gateway/pix/receive
@@ -58,18 +59,14 @@ export const voidpayProvider: PaymentProvider = {
     };
   },
 
-  /** Consulta a transação: GET /api/v1/gateway/transactions?id=<transactionId> (status + payedAt). */
-  async getStatus(providerRef) {
+  /** Consulta autenticada: valida identificação e valor antes de interpretar o status. */
+  async getStatus(providerRef, amountCents) {
     const publicKey = process.env.VOIDPAY_PUBLIC_KEY, secretKey = process.env.VOIDPAY_SECRET_KEY;
     if (!publicKey || !secretKey) throw new Error("Chaves do VoidPay não configuradas");
     const res = await fetch(`${base()}/api/v1/gateway/transactions?id=${encodeURIComponent(providerRef)}`, {
-      headers: { "x-public-key": publicKey, "x-secret-key": secretKey }, cache: "no-store",
+      headers: { "x-public-key": publicKey, "x-secret-key": secretKey }, cache: "no-store", signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) throw new Error(`VoidPay respondeu ${res.status}`);
-    const d = await res.json();
-    const st = String(d.status ?? d.transactionStatus ?? "").toUpperCase();
-    if (d.payedAt || ["COMPLETED", "OK", "PAID", "APPROVED", "CONFIRMED"].includes(st)) return "paid";
-    if (["FAILED", "EXPIRED", "CANCELED", "REJECTED"].includes(st)) return "failed";
-    return "pending";
+    return providerStatus(await res.json(), providerRef, amountCents);
   },
 };
